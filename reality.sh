@@ -3,7 +3,6 @@ set -euo pipefail
 DEFAULT_XRAY_VERSION='latest version'
 DEFAULT_SNI='play-apps-features.googleusercontent.com'
 DEFAULT_PORT='8443'
-DEFAULT_FINGERPRINT='edge'
 MODE='manual'
 INSTALLER=''
 CONFIG_TMP=''
@@ -35,7 +34,6 @@ select_version() {
 select_settings() {
     SNI=$DEFAULT_SNI
     PORT=$DEFAULT_PORT
-    FINGERPRINT=$DEFAULT_FINGERPRINT
     [[ "$MODE" == 'manual' ]] || return 0
     while true; do
         ask 'REALITY SNI' "$DEFAULT_SNI"
@@ -52,20 +50,6 @@ select_settings() {
             break
         fi
         printf 'Enter a port between 1 and 65535.\n' >&2
-    done
-    printf '%s\n' 'uTLS fingerprint:' '  1) chrome' '  2) firefox' '  3) edge (default)' '  4) ios' '  5) android' '  6) qq' '  7) 360'
-    while true; do
-        ask 'Choose a uTLS fingerprint number (default: edge)' '3'
-        case "$REPLY" in
-            1) FINGERPRINT='chrome'; break ;;
-            2) FINGERPRINT='firefox'; break ;;
-            3) FINGERPRINT='edge'; break ;;
-            4) FINGERPRINT='ios'; break ;;
-            5) FINGERPRINT='android'; break ;;
-            6) FINGERPRINT='qq'; break ;;
-            7) FINGERPRINT='360'; break ;;
-            *) printf 'Enter a number from 1 to 7.\n' >&2 ;;
-        esac
     done
 }
 install_dependencies() {
@@ -174,8 +158,33 @@ reconfig() {
     ],
     "outbounds": [
         {"protocol": "freedom", "tag": "direct"},
+        {
+            "protocol": "freedom",
+            "tag": "IPv4",
+            "streamSettings": {
+                "sockopt": {"domainStrategy": "ForceIPv4"}
+            }
+        },
         {"protocol": "blackhole", "tag": "blocked"}
-    ]
+    ],
+    "routing": {
+        "rules": [
+            {
+                "type": "field",
+                "domain": [
+                    "geosite:apple",
+                    "geosite:meta",
+                    "geosite:google",
+                    "geosite:openai",
+                    "geosite:spotify",
+                    "geosite:netflix",
+                    "geosite:reddit",
+                    "geosite:speedtest"
+                ],
+                "outboundTag": "IPv4"
+            }
+        ]
+    }
 }
 EOF
     /usr/local/bin/xray run -test -format json -config "$CONFIG_TMP"
@@ -189,7 +198,7 @@ EOF
     local isp url
     isp=$(curl -fsS --max-time 5 -H 'User-Agent: Mozilla/5.0' 'https://api.ip.sb/geoip' 2>/dev/null | awk -F '"' '{c="";i="";for(x=1;x<=NF;x++){if($x=="country_code")c=$(x+2);if($x=="isp")i=$(x+2)};if(c&&i)print c"-"i}') || isp=''
     isp=$(printf '%s' "${isp:-VLESS-TCP-REALITY}" | LC_ALL=C tr -cs 'A-Za-z0-9._~-' '_')
-    url="vless://${UUID}@${IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=${FINGERPRINT}&pbk=${public_key}&sid=${short_id}&type=tcp&headerType=none#${isp}"
+    url="vless://${UUID}@${IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=firefox&pbk=${public_key}&sid=${short_id}&type=tcp&headerType=none#${isp}"
     printf '\nVLESS TCP REALITY installed successfully.\n\n%s\n\n' "$url"
     qrencode -t ANSIUTF8 -m 2 -s 2 -o - "$url"
     printf '\nAllow inbound TCP port %s in your server/provider firewall if needed.\n' "$PORT"
@@ -198,7 +207,7 @@ main() {
     case "${1:-}" in
         '') ;;
         --auto) MODE='auto' ;;
-        --help|-h) printf 'Usage: sudo bash reality.sh [--auto]\nManual: ask for Xray version, SNI, port and fingerprint.\nAuto: ask only for Xray version; use the default connection settings.\n'; return 0 ;;
+        --help|-h) printf 'Usage: sudo bash reality.sh [--auto]\nManual: ask for Xray version, SNI and port.\nAuto: ask only for Xray version; use the default connection settings.\n'; return 0 ;;
         *) die 'Usage: sudo bash reality.sh [--auto]' ;;
     esac
     [[ $# -le 1 ]] || die 'Usage: sudo bash reality.sh [--auto]'
