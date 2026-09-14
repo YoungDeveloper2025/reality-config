@@ -72,9 +72,13 @@ install_dependencies() {
         die 'Unsupported package manager. Install curl, openssl, qrencode, awk and ca-certificates first.'
     fi
 }
-valid_ipv4() {
+valid_ip() {
     local octet
     local octets=()
+    if [[ "$1" == *:* ]]; then
+        [[ "$1" =~ ^[0-9a-fA-F:]+$ ]]
+        return
+    fi
     [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
     IFS='.' read -r -a octets <<< "$1"
     for octet in "${octets[@]}"; do
@@ -83,16 +87,23 @@ valid_ipv4() {
 }
 get_ip() {
     local server_ip='' endpoint
-    for endpoint in 'https://ipv4.ip.sb' 'https://api.ipify.org'; do
-        server_ip=$(curl -4 -fsS --connect-timeout 5 --max-time 10 "$endpoint" 2>/dev/null) || { server_ip=''; continue; }
-        valid_ipv4 "$server_ip" && break
+    for endpoint in 'https://ipv4.ip.sb' 'https://ipv6.ip.sb'; do
+        server_ip=$(curl -fsS --connect-timeout 5 --max-time 10 "$endpoint" 2>/dev/null) || { server_ip=''; continue; }
+        valid_ip "$server_ip" && break
         server_ip=''
     done
     if [[ -z "$server_ip" ]] && command -v ip >/dev/null 2>&1; then
-        server_ip=$(ip -4 route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}') || server_ip=''
+        server_ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}') || server_ip=''
+        if [[ -z "$server_ip" ]]; then
+            server_ip=$(ip -6 route get 2001:4860:4860::8888 2>/dev/null | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}') || server_ip=''
+        fi
     fi
-    valid_ipv4 "$server_ip" || die 'Could not determine the server IPv4 address. An IPv4 connection is required.'
-    printf '%s' "$server_ip"
+    valid_ip "$server_ip" || die 'Could not determine the server IP address.'
+    if [[ "$server_ip" == *:* ]]; then
+        printf '[%s]' "$server_ip"
+    else
+        printf '%s' "$server_ip"
+    fi
 }
 install_xray() {
     INSTALLER=$(mktemp)
@@ -104,7 +115,6 @@ install_xray() {
     fi
     [[ -x /usr/local/bin/xray ]] || die 'Xray-core installation failed.'
     /usr/local/bin/xray version
-    bash "$INSTALLER" install-geodata
 }
 reconfig() {
     local output private_key public_key short_id config_path
@@ -118,10 +128,6 @@ reconfig() {
     CONFIG_TMP=$(mktemp /usr/local/etc/xray/config.json.XXXXXX)
     cat >"$CONFIG_TMP" <<EOF
 {
-    "dns": {
-        "servers": ["1.1.1.1", "8.8.8.8"],
-        "queryStrategy": "UseIPv4"
-    },
     "inbounds": [
         {
             "port": $PORT,
@@ -134,11 +140,6 @@ reconfig() {
                     }
                 ],
                 "decryption": "none"
-            },
-            "sniffing": {
-                "enabled": true,
-                "destOverride": ["http", "tls", "quic"],
-                "routeOnly": false
             },
             "streamSettings": {
                 "network": "tcp",
@@ -159,34 +160,8 @@ reconfig() {
     ],
     "outbounds": [
         {"protocol": "freedom", "tag": "direct"},
-        {
-            "protocol": "freedom",
-            "tag": "IPv4",
-            "streamSettings": {
-                "sockopt": {"domainStrategy": "ForceIPv4"}
-            }
-        },
         {"protocol": "blackhole", "tag": "blocked"}
-    ],
-    "routing": {
-        "domainStrategy": "AsIs",
-        "rules": [
-            {
-                "type": "field",
-                "domain": [
-                    "geosite:apple",
-                    "geosite:meta",
-                    "geosite:google",
-                    "geosite:openai",
-                    "geosite:spotify",
-                    "geosite:netflix",
-                    "geosite:reddit",
-                    "geosite:speedtest"
-                ],
-                "outboundTag": "IPv4"
-            }
-        ]
-    }
+    ]
 }
 EOF
     /usr/local/bin/xray run -test -format json -config "$CONFIG_TMP"
