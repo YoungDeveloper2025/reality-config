@@ -20,7 +20,7 @@ ask() {
     REPLY=${answer:-$2}
 }
 select_version() {
-    printf '%s\n' 'Press Enter to use the latest stable Xray-core release. If you prefer a specific version, we recommend 26.6.27.'
+    printf '%s\n' 'Press Enter to use the latest Xray-core release. If you prefer a specific version, we recommend 26.6.27.'
     while true; do
         ask 'Enter the desired Xray-core version' "$DEFAULT_XRAY_VERSION"
         case "${REPLY,,}" in
@@ -54,7 +54,7 @@ select_settings() {
 }
 install_dependencies() {
     local packages=() package
-    for package in curl openssl ufw; do
+    for package in curl openssl qrencode; do
         command -v "$package" >/dev/null 2>&1 || packages+=("$package")
     done
     command -v awk >/dev/null 2>&1 || packages+=('gawk')
@@ -67,7 +67,7 @@ install_dependencies() {
     elif command -v yum >/dev/null 2>&1; then
         yum install -y "${packages[@]}" ca-certificates
     else
-        die 'Unsupported package manager. Install curl, openssl, ufw, awk and ca-certificates first.'
+        die 'Unsupported package manager. Install curl, openssl, qrencode, awk and ca-certificates first.'
     fi
 }
 valid_ip() {
@@ -107,7 +107,7 @@ install_xray() {
     INSTALLER=$(mktemp)
     curl -fL --retry 3 --connect-timeout 15 -o "$INSTALLER" 'https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh'
     if [[ "$XRAY_VERSION" == 'latest' ]]; then
-        bash "$INSTALLER" install --force
+        bash "$INSTALLER" install --beta
     else
         bash "$INSTALLER" install --version "v$XRAY_VERSION"
     fi
@@ -192,7 +192,6 @@ EOF
     chmod 644 "$CONFIG_TMP"
     mv -f -- "$CONFIG_TMP" "$config_path"
     CONFIG_TMP=''
-    ufw allow "${PORT}/tcp"
     systemctl enable xray.service
     systemctl restart xray.service
     systemctl is-active --quiet xray.service || die 'Xray failed to start. Check: journalctl -u xray -n 50 --no-pager'
@@ -201,7 +200,8 @@ EOF
     isp=$(printf '%s' "${isp:-VLESS-TCP-REALITY}" | LC_ALL=C tr -cs 'A-Za-z0-9._~-' '_')
     url="vless://${UUID}@${IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${SNI}&fp=firefox&pbk=${public_key}&sid=${short_id}&type=tcp&headerType=none#${isp}"
     printf '\nVLESS TCP REALITY installed successfully.\n\n%s\n\n' "$url"
-    printf '\nAllow inbound TCP port %s in your provider firewall if needed.\n' "$PORT"
+    qrencode -t ANSIUTF8 -m 2 -s 2 -o - "$url"
+    printf '\nAllow inbound TCP port %s in your server/provider firewall if needed.\n' "$PORT"
 }
 main() {
     case "${1:-}" in
