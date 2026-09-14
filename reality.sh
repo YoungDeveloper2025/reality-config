@@ -3,7 +3,7 @@ set -euo pipefail
 DEFAULT_XRAY_VERSION='latest version'
 DEFAULT_SNI='play-apps-features.googleusercontent.com'
 DEFAULT_PORT='8443'
-DEFAULT_FINGERPRINT='firefox'
+DEFAULT_FINGERPRINT='edge'
 MODE='manual'
 INSTALLER=''
 CONFIG_TMP=''
@@ -21,7 +21,7 @@ ask() {
     REPLY=${answer:-$2}
 }
 select_version() {
-    printf '%s\n' 'Press Enter to use the latest stable Xray-core release (no prereleases). If you prefer a specific version, we recommend 26.6.27.'
+    printf '%s\n' 'Press Enter to use the latest Xray-core release. If you prefer a specific version, we recommend 26.6.27.'
     while true; do
         ask 'Enter the desired Xray-core version' "$DEFAULT_XRAY_VERSION"
         case "${REPLY,,}" in
@@ -52,6 +52,20 @@ select_settings() {
             break
         fi
         printf 'Enter a port between 1 and 65535.\n' >&2
+    done
+    printf '%s\n' 'uTLS fingerprint:' '  1) chrome' '  2) firefox' '  3) edge (default)' '  4) ios' '  5) android' '  6) qq' '  7) 360'
+    while true; do
+        ask 'Choose a uTLS fingerprint number (default: edge)' '3'
+        case "$REPLY" in
+            1) FINGERPRINT='chrome'; break ;;
+            2) FINGERPRINT='firefox'; break ;;
+            3) FINGERPRINT='edge'; break ;;
+            4) FINGERPRINT='ios'; break ;;
+            5) FINGERPRINT='android'; break ;;
+            6) FINGERPRINT='qq'; break ;;
+            7) FINGERPRINT='360'; break ;;
+            *) printf 'Enter a number from 1 to 7.\n' >&2 ;;
+        esac
     done
 }
 install_dependencies() {
@@ -109,7 +123,7 @@ install_xray() {
     INSTALLER=$(mktemp)
     curl -fL --retry 3 --connect-timeout 15 -o "$INSTALLER" 'https://raw.githubusercontent.com/XTLS/Xray-install/main/install-release.sh'
     if [[ "$XRAY_VERSION" == 'latest' ]]; then
-        bash "$INSTALLER" install --force
+        bash "$INSTALLER" install --beta
     else
         bash "$INSTALLER" install --version "v$XRAY_VERSION"
     fi
@@ -184,7 +198,7 @@ main() {
     case "${1:-}" in
         '') ;;
         --auto) MODE='auto' ;;
-        --help|-h) printf 'Usage: sudo bash reality.sh [--auto]\nManual: ask for Xray version, SNI and port.\nAuto: ask only for Xray version; use the default connection settings.\nThe uTLS fingerprint is fixed to firefox in both modes.\n'; return 0 ;;
+        --help|-h) printf 'Usage: sudo bash reality.sh [--auto]\nManual: ask for Xray version, SNI, port and fingerprint.\nAuto: ask only for Xray version; use the default connection settings.\n'; return 0 ;;
         *) die 'Usage: sudo bash reality.sh [--auto]' ;;
     esac
     [[ $# -le 1 ]] || die 'Usage: sudo bash reality.sh [--auto]'
