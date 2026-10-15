@@ -148,7 +148,7 @@ reconfig() {
                     "xver": 0,
                     "serverNames": ["$SNI"],
                     "privateKey": "$private_key",
-                    "minClientVer": "",
+                    "minClientVer": "1.8.0",
                     "maxClientVer": "",
                     "maxTimeDiff": 0,
                     "shortIds": ["$short_id"]
